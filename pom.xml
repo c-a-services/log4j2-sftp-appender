@@ -46,22 +46,22 @@
 			<artifactId>log4j-core</artifactId>
 			<version>2.11.1</version>
 		</dependency>
-		
+
 		<!-- do not use jsch as it seems orphaned and has no active maintainer anymore
 			https://bugs.eclipse.org/bugs/show_bug.cgi?id=540652
 		-->
-		
+
 		<!--  but org.apache.sshd.sftp - see  -->
 		<!-- https://mvnrepository.com/artifact/org.apache.sshd/sshd-sftp -->
-		<!-- 
-			alternative may be sshd-sftp in case it is better documented ? 
+		<!--
+			alternative may be sshd-sftp in case it is better documented ?
 		<dependency>
 			<groupId>org.apache.sshd</groupId>
 			<artifactId>sshd-sftp</artifactId>
 			<version>2.1.0</version>
 		</dependency>
 		-->
-		
+
 		<!-- https://github.com/hierynomus/sshj -->
 		<dependency>
 			<groupId>com.hierynomus</groupId>
@@ -125,6 +125,10 @@
 						<groupId>org.apache.maven.plugins</groupId>
 						<artifactId>maven-gpg-plugin</artifactId>
 						<version>1.5</version>
+						<configuration>
+							<!-- need to be generated via gpg doubledash-key-gen and stored as property in settings.xml -->
+							<keyname>${jenkins.gpg.keyname}</keyname>
+						</configuration>
 						<executions>
 							<execution>
 								<id>sign-artifacts</id>
