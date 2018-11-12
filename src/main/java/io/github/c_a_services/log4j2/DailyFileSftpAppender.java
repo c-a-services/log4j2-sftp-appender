@@ -3,7 +3,7 @@ package io.github.c_a_services.log4j2;
 import java.io.Serializable;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.temporal.ChronoField;
+import java.time.ZoneId;
 
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.Layout;
@@ -67,7 +67,7 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	@Override
 	public void append(LogEvent aEvent) {
 		Serializable tempString = getLayout().toSerializable(aEvent);
-		LocalDate tempLocalDateTime = LocalDate.ofEpochDay(Instant.ofEpochMilli(aEvent.getTimeMillis()).get(ChronoField.EPOCH_DAY));
+		LocalDate tempLocalDateTime = Instant.ofEpochMilli(aEvent.getTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate();
 		String tempFileName = tempLocalDateTime + "-" + getFilePattern();
 		System.out.println("tempFileName=" + tempFileName);
 		System.out.println("tempString=" + tempString);
