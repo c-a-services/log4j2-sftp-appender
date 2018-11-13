@@ -1,11 +1,9 @@
 package io.github.c_a_services.log4j2;
 
-import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.Serializable;
 import java.security.PublicKey;
 import java.time.Instant;
@@ -120,9 +118,8 @@ public class DailyFileSftpAppender extends AbstractAppender {
 		synchronized (this) {
 			try {
 				RemoteFile tempFile = getRemoteFile(currentFileName);
-				try (OutputStream tempOut = new BufferedOutputStream(tempFile.new RemoteFileOutputStream(tempFile.length()), 16 * 1024)) {
-					tempOut.write(tempString.toString().getBytes("UTF-8"));
-				}
+				byte[] tempBytes = tempString.toString().getBytes("UTF-8");
+				tempFile.write(tempFile.length(), tempBytes, 0, tempBytes.length);
 				tempFile.close();
 			} catch (IOException e) {
 				logError("Retry", e);
@@ -130,9 +127,8 @@ public class DailyFileSftpAppender extends AbstractAppender {
 				ssh = null;
 				try {
 					RemoteFile tempFile = getRemoteFile(currentFileName);
-					try (OutputStream tempOut = new BufferedOutputStream(tempFile.new RemoteFileOutputStream(tempFile.length()), 16 * 1024)) {
-						tempOut.write(tempString.toString().getBytes("UTF-8"));
-					}
+					byte[] tempBytes = tempString.toString().getBytes("UTF-8");
+					tempFile.write(tempFile.length(), tempBytes, 0, tempBytes.length);
 					tempFile.close();
 				} catch (IOException e2) {
 					logInfo(tempString.toString());
@@ -174,6 +170,7 @@ public class DailyFileSftpAppender extends AbstractAppender {
 					}
 				}
 			};
+			writerThread.setDaemon(false);
 			writerThread.start();
 		}
 		Serializable tempString = getLayout().toSerializable(aEvent);
