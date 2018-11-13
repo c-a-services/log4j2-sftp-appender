@@ -16,6 +16,7 @@ import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.appender.rolling.RolloverStrategy;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginElement;
@@ -73,6 +74,7 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	public static DailyFileSftpAppender createAppender(@PluginAttribute("name") String name, @PluginAttribute("ignoreExceptions") boolean ignoreExceptions,
 			@PluginElement("Layout") Layout<? extends Serializable> aLayout, //
 			@PluginElement("Filters") Filter filter, //
+			@PluginElement("Strategy") RolloverStrategy strategy, //
 			@PluginAttribute("userName") String aUserName, //
 			@PluginAttribute("publicKeyResource") String aPublicKeyResource, //
 			@PluginAttribute("privateKeyResource") String aPrivateKeyResource, //
