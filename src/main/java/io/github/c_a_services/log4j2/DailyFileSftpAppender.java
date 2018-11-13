@@ -108,33 +108,6 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	/**
 	 *
 	 */
-	@Override
-	public void initialize() {
-		super.initialize();
-		writerThread = new Thread() {
-			@Override
-			public void run() {
-				setName("DailyFileSftpAppenderWriter-" + getName());
-				try {
-					while (true) {
-						synchronized (pendingStrings) {
-							pendingStrings.wait();
-							flushPending();
-						}
-					}
-				} catch (InterruptedException e) {
-					synchronized (pendingStrings) {
-						flushPending();
-					}
-				}
-			}
-		};
-		writerThread.start();
-	}
-
-	/**
-	 *
-	 */
 	protected void flushPending() {
 		if (pendingStrings.isEmpty()) {
 			return;
@@ -182,6 +155,27 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	 */
 	@Override
 	public void append(LogEvent aEvent) {
+		if (writerThread == null) {
+			writerThread = new Thread() {
+				@Override
+				public void run() {
+					setName("DailyFileSftpAppenderWriter-" + getName());
+					try {
+						while (true) {
+							synchronized (pendingStrings) {
+								pendingStrings.wait();
+								flushPending();
+							}
+						}
+					} catch (InterruptedException e) {
+						synchronized (pendingStrings) {
+							flushPending();
+						}
+					}
+				}
+			};
+			writerThread.start();
+		}
 		Serializable tempString = getLayout().toSerializable(aEvent);
 		LocalDate tempLocalDateTime = Instant.ofEpochMilli(aEvent.getTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate();
 		String tempFileName = tempLocalDateTime + "-" + filePattern;
