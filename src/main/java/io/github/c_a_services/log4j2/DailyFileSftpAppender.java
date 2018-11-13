@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.Set;
 
 import org.apache.logging.log4j.core.Filter;
@@ -98,17 +99,49 @@ public class DailyFileSftpAppender extends AbstractAppender {
 				aHostName, aPathName, aPassPhrase);
 	}
 
+	private Thread writerThread;
+
+	private LinkedList<String> pendingStrings = new LinkedList<>();
+
+	private String currentFileName;
+
 	/**
 	 *
 	 */
 	@Override
-	public void append(LogEvent aEvent) {
-		Serializable tempString = getLayout().toSerializable(aEvent);
-		LocalDate tempLocalDateTime = Instant.ofEpochMilli(aEvent.getTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate();
-		String tempFileName = tempLocalDateTime + "-" + filePattern;
+	public void initialize() {
+		super.initialize();
+		writerThread = new Thread() {
+			@Override
+			public void run() {
+				setName("DailyFileSftpAppenderWriter-" + getName());
+				try {
+					while (true) {
+						synchronized (pendingStrings) {
+							pendingStrings.wait();
+							flushPending();
+						}
+					}
+				} catch (InterruptedException e) {
+					synchronized (pendingStrings) {
+						flushPending();
+					}
+				}
+			}
+		};
+		writerThread.start();
+	}
 
+	/**
+	 *
+	 */
+	protected void flushPending() {
+		StringBuilder tempString = new StringBuilder();
+		while (!pendingStrings.isEmpty()) {
+			tempString.append(pendingStrings.removeFirst());
+		}
 		try {
-			RemoteFile tempFile = getRemoteFile(tempFileName);
+			RemoteFile tempFile = getRemoteFile(currentFileName);
 			try (RemoteFileOutputStream tempOut = tempFile.new RemoteFileOutputStream(tempFile.length())) {
 				tempOut.write(tempString.toString().getBytes("UTF-8"));
 			}
@@ -118,7 +151,7 @@ public class DailyFileSftpAppender extends AbstractAppender {
 			sftpClient = null;
 			ssh = null;
 			try {
-				RemoteFile tempFile = getRemoteFile(tempFileName);
+				RemoteFile tempFile = getRemoteFile(currentFileName);
 				try (RemoteFileOutputStream tempOut = tempFile.new RemoteFileOutputStream(tempFile.length())) {
 					tempOut.write(tempString.toString().getBytes("UTF-8"));
 					tempOut.flush();
@@ -127,6 +160,34 @@ public class DailyFileSftpAppender extends AbstractAppender {
 			} catch (IOException e2) {
 				logError("Failure", e2);
 				throw new RuntimeException(e2);
+			}
+		}
+
+	}
+
+	/**
+	 *
+	 */
+	@Override
+	public void stop() {
+		shutdown();
+		super.stop();
+	}
+
+	/**
+	 *
+	 */
+	@Override
+	public void append(LogEvent aEvent) {
+		Serializable tempString = getLayout().toSerializable(aEvent);
+		LocalDate tempLocalDateTime = Instant.ofEpochMilli(aEvent.getTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate();
+		String tempFileName = tempLocalDateTime + "-" + filePattern;
+		synchronized (pendingStrings) {
+			if (tempFileName.equals(currentFileName)) {
+				pendingStrings.add(tempString.toString());
+			} else {
+				flushPending();
+				currentFileName = tempFileName;
 			}
 		}
 
@@ -240,12 +301,15 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	}
 
 	/**
-	 * TODO call on Shutdown.
 	 *
-	 * @throws IOException
 	 *
 	 */
-	public void shutdown() {
+	private void shutdown() {
+		if (writerThread != null) {
+			writerThread.interrupt();
+			writerThread = null;
+		}
+
 		if (sftpClient != null) {
 			try {
 				sftpClient.close();
