@@ -161,7 +161,9 @@ public class DailyFileSftpAppender extends AbstractAppender {
 					try {
 						while (true) {
 							synchronized (pendingStrings) {
-								pendingStrings.wait();
+								if (pendingStrings.isEmpty()) {
+									pendingStrings.wait();
+								}
 							}
 							flushPending();
 						}
