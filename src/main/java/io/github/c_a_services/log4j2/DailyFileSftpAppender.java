@@ -136,6 +136,9 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	 *
 	 */
 	protected void flushPending() {
+		if (pendingStrings.isEmpty()) {
+			return;
+		}
 		StringBuilder tempString = new StringBuilder();
 		while (!pendingStrings.isEmpty()) {
 			tempString.append(pendingStrings.removeFirst());
