@@ -23,7 +23,6 @@ import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginElement;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.core.layout.PatternLayout;
-import org.apache.logging.log4j.status.StatusLogger;
 
 import net.schmizz.sshj.SSHClient;
 import net.schmizz.sshj.sftp.OpenMode;
@@ -38,8 +37,6 @@ import net.schmizz.sshj.userauth.keyprovider.KeyProvider;
  */
 @Plugin(name = "DailyFileSftpAppender", category = "Core", elementType = "appender", printObject = true)
 public class DailyFileSftpAppender extends AbstractAppender {
-
-	private static final StatusLogger LOGGER = StatusLogger.getLogger();
 
 	private String userName;
 	private String privateKeyResource;
@@ -138,6 +135,7 @@ public class DailyFileSftpAppender extends AbstractAppender {
 					}
 					tempFile.close();
 				} catch (IOException e2) {
+					logInfo(tempString.toString());
 					logError("Failure", e2);
 					throw new RuntimeException(e2);
 				}
@@ -263,6 +261,10 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	 */
 	private void logDebug(String aString) {
 		LOGGER.debug("DailyFileSftpAppender:" + aString);
+	}
+
+	private void logInfo(String aString) {
+		LOGGER.info("DailyFileSftpAppender:" + aString);
 	}
 
 	/**
