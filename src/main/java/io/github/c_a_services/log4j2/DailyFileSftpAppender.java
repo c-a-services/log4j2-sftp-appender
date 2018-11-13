@@ -3,7 +3,7 @@ package io.github.c_a_services.log4j2;
 import java.io.Serializable;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.temporal.ChronoField;
+import java.time.ZoneId;
 
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.Layout;
@@ -22,20 +22,20 @@ import org.apache.logging.log4j.core.layout.PatternLayout;
 public class DailyFileSftpAppender extends AbstractAppender {
 
 	private String privateKeyResource;
+	private String privateKey;
 	private String filePattern;
 	private String hostName;
 
 	/**
-	 * @param aPrivateKeyResource
-	 * @param aFilePattern
 	 *
 	 */
 	protected DailyFileSftpAppender(String aName, Filter aFilter, Layout<? extends Serializable> aLayout, boolean ignoreExceptions, String aPrivateKeyResource,
-			String aFilePattern, String aHostName) {
+			String aFilePattern, String aHostName, String aPrivateKey) {
 		super(aName, aFilter, aLayout, ignoreExceptions);
 		privateKeyResource = aPrivateKeyResource;
 		filePattern = aFilePattern;
 		hostName = aHostName;
+		privateKey = aPrivateKey;
 
 	}
 
@@ -44,6 +44,7 @@ public class DailyFileSftpAppender extends AbstractAppender {
 			@PluginElement("Layout") Layout<? extends Serializable> aLayout, //
 			@PluginElement("Filters") Filter filter, //
 			@PluginAttribute("privateKeyResource") String aPrivateKeyResource, //
+			@PluginAttribute("privateKey") String aKeyResource, //
 			@PluginAttribute("filePattern") String aFilePattern, //
 			@PluginAttribute("hostName") String aHostName) {
 
@@ -58,7 +59,7 @@ public class DailyFileSftpAppender extends AbstractAppender {
 		} else {
 			tempLayout = aLayout;
 		}
-		return new DailyFileSftpAppender(name, filter, tempLayout, ignoreExceptions, aPrivateKeyResource, aFilePattern, aHostName);
+		return new DailyFileSftpAppender(name, filter, tempLayout, ignoreExceptions, aPrivateKeyResource, aFilePattern, aHostName, aKeyResource);
 	}
 
 	/**
@@ -67,7 +68,7 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	@Override
 	public void append(LogEvent aEvent) {
 		Serializable tempString = getLayout().toSerializable(aEvent);
-		LocalDate tempLocalDateTime = LocalDate.ofEpochDay(Instant.ofEpochMilli(aEvent.getTimeMillis()).get(ChronoField.EPOCH_DAY));
+		LocalDate tempLocalDateTime = Instant.ofEpochMilli(aEvent.getTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate();
 		String tempFileName = tempLocalDateTime + "-" + getFilePattern();
 		System.out.println("tempFileName=" + tempFileName);
 		System.out.println("tempString=" + tempString);
@@ -81,10 +82,24 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	}
 
 	/**
-	 * @see #filePattern
+	 * @see #privateKeyResource
 	 */
-	public void setFilePattern(String aFilePattern) {
-		filePattern = aFilePattern;
+	public String getPrivateKeyResource() {
+		return privateKeyResource;
+	}
+
+	/**
+	 * @see #privateKey
+	 */
+	public String getPrivateKey() {
+		return privateKey;
+	}
+
+	/**
+	 * @see #hostName
+	 */
+	public String getHostName() {
+		return hostName;
 	}
 
 }
