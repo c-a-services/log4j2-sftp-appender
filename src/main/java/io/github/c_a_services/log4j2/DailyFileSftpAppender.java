@@ -183,12 +183,12 @@ public class DailyFileSftpAppender extends AbstractAppender {
 		LocalDate tempLocalDateTime = Instant.ofEpochMilli(aEvent.getTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate();
 		String tempFileName = tempLocalDateTime + "-" + filePattern;
 		synchronized (pendingStrings) {
-			if (tempFileName.equals(currentFileName)) {
-				pendingStrings.add(tempString.toString());
-			} else {
+			if (!tempFileName.equals(currentFileName)) {
 				flushPending();
 				currentFileName = tempFileName;
 			}
+			pendingStrings.add(tempString.toString());
+			pendingStrings.notifyAll();
 		}
 
 	}
