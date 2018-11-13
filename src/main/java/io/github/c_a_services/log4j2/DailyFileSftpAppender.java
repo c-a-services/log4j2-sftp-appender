@@ -109,36 +109,40 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	 *
 	 */
 	protected void flushPending() {
-		if (pendingStrings.isEmpty()) {
-			return;
-		}
-		StringBuilder tempString = new StringBuilder();
-		while (!pendingStrings.isEmpty()) {
-			tempString.append(pendingStrings.removeFirst());
-		}
-		try {
-			RemoteFile tempFile = getRemoteFile(currentFileName);
-			try (RemoteFileOutputStream tempOut = tempFile.new RemoteFileOutputStream(tempFile.length())) {
-				tempOut.write(tempString.toString().getBytes("UTF-8"));
+		StringBuilder tempString;
+		synchronized (pendingStrings) {
+			if (pendingStrings.isEmpty()) {
+				return;
 			}
-			tempFile.close();
-		} catch (IOException e) {
-			logError("Retry", e);
-			sftpClient = null;
-			ssh = null;
+			tempString = new StringBuilder(1024 * 16);
+			while (!pendingStrings.isEmpty()) {
+				tempString.append(pendingStrings.removeFirst());
+			}
+		}
+		synchronized (this) {
 			try {
 				RemoteFile tempFile = getRemoteFile(currentFileName);
 				try (RemoteFileOutputStream tempOut = tempFile.new RemoteFileOutputStream(tempFile.length())) {
 					tempOut.write(tempString.toString().getBytes("UTF-8"));
-					tempOut.flush();
 				}
 				tempFile.close();
-			} catch (IOException e2) {
-				logError("Failure", e2);
-				throw new RuntimeException(e2);
+			} catch (IOException e) {
+				logError("Retry", e);
+				sftpClient = null;
+				ssh = null;
+				try {
+					RemoteFile tempFile = getRemoteFile(currentFileName);
+					try (RemoteFileOutputStream tempOut = tempFile.new RemoteFileOutputStream(tempFile.length())) {
+						tempOut.write(tempString.toString().getBytes("UTF-8"));
+						tempOut.flush();
+					}
+					tempFile.close();
+				} catch (IOException e2) {
+					logError("Failure", e2);
+					throw new RuntimeException(e2);
+				}
 			}
 		}
-
 	}
 
 	/**
@@ -164,13 +168,11 @@ public class DailyFileSftpAppender extends AbstractAppender {
 						while (true) {
 							synchronized (pendingStrings) {
 								pendingStrings.wait();
-								flushPending();
 							}
-						}
-					} catch (InterruptedException e) {
-						synchronized (pendingStrings) {
 							flushPending();
 						}
+					} catch (InterruptedException e) {
+						flushPending();
 					}
 				}
 			};
