@@ -26,6 +26,8 @@ import org.apache.logging.log4j.status.StatusLogger;
 import net.schmizz.sshj.SSHClient;
 import net.schmizz.sshj.sftp.OpenMode;
 import net.schmizz.sshj.sftp.RemoteFile;
+import net.schmizz.sshj.sftp.RemoteFile.RemoteFileOutputStream;
+import net.schmizz.sshj.sftp.SFTPClient;
 import net.schmizz.sshj.transport.verification.HostKeyVerifier;
 import net.schmizz.sshj.userauth.keyprovider.KeyProvider;
 
@@ -45,6 +47,10 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	private String pathName;
 
 	private String publicKeyResource;
+
+	private transient SFTPClient sftpClient;
+
+	private transient SSHClient ssh;
 
 	/**
 	 * @param aPublicKeyResource TODO
@@ -99,34 +105,67 @@ public class DailyFileSftpAppender extends AbstractAppender {
 		LocalDate tempLocalDateTime = Instant.ofEpochMilli(aEvent.getTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate();
 		String tempFileName = tempLocalDateTime + "-" + filePattern;
 
-		SSHClient ssh = new SSHClient();
 		try {
-			//			ssh.loadKnownHosts();
-			ssh.addHostKeyVerifier(new HostKeyVerifier() {
-
-				@Override
-				public boolean verify(String aHostname, @SuppressWarnings("unused") int aPort, @SuppressWarnings("unused") PublicKey aKey) {
-					return aHostname.equals(hostName);
-				}
-			});
-			ssh.connect(hostName);
+			RemoteFile tempFile = getRemoteFile(tempFileName);
+			try (RemoteFileOutputStream tempOut = tempFile.new RemoteFileOutputStream(tempFile.length())) {
+				tempOut.write(tempString.toString().getBytes("UTF-8"));
+			}
+			tempFile.close();
+		} catch (IOException e) {
+			logError("Retry", e);
+			sftpClient = null;
+			ssh = null;
 			try {
+				RemoteFile tempFile = getRemoteFile(tempFileName);
+				try (RemoteFileOutputStream tempOut = tempFile.new RemoteFileOutputStream(tempFile.length())) {
+					tempOut.write(tempString.toString().getBytes("UTF-8"));
+					tempOut.flush();
+				}
+				tempFile.close();
+			} catch (IOException e2) {
+				logError("Failure", e2);
+				throw new RuntimeException(e2);
+			}
+		}
+
+	}
+
+	/**
+	 * @param aFileName
+	 * @throws IOException
+	 *
+	 */
+	private RemoteFile getRemoteFile(String aFileName) throws IOException {
+		if (sftpClient == null) {
+			if (ssh == null) {
+				ssh = new SSHClient();
+				//			ssh.loadKnownHosts();
+				ssh.addHostKeyVerifier(new HostKeyVerifier() {
+
+					@Override
+					public boolean verify(String aHostname, @SuppressWarnings("unused") int aPort, @SuppressWarnings("unused") PublicKey aKey) {
+						return aHostname.equals(hostName);
+					}
+				});
+				ssh.connect(hostName);
 				KeyProvider tempKey = loadKey(ssh);
 
 				ssh.authPublickey(userName, tempKey);
-
-				Set<OpenMode> tempOpenModes = new HashSet<>();
-				tempOpenModes.add(OpenMode.WRITE);
-				tempOpenModes.add(OpenMode.APPEND);
-				RemoteFile tempFile = ssh.newSFTPClient().open(pathName + tempFileName, tempOpenModes);
-			} finally {
-				ssh.disconnect();
 			}
-		} catch (IOException | RuntimeException e) {
-			logError("Error", e);
-			throw new RuntimeException(e);
-		}
+			try {
 
+				sftpClient = ssh.newSFTPClient();
+			} catch (IOException | RuntimeException e) {
+				logError("Error", e);
+				throw new RuntimeException(e);
+			}
+		}
+		Set<OpenMode> tempOpenModes = new HashSet<>();
+		tempOpenModes.add(OpenMode.WRITE);
+		tempOpenModes.add(OpenMode.APPEND);
+		tempOpenModes.add(OpenMode.CREAT);
+		RemoteFile tempFile = sftpClient.open(pathName + aFileName, tempOpenModes);
+		return tempFile;
 	}
 
 	/**
@@ -135,21 +174,22 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	 *
 	 */
 	private KeyProvider loadKey(SSHClient aSsh) throws IOException {
-		File tempTempFile = createTempKeyFile(privateKeyResource, null);
+		File tempTempPrivateFile = createTempKeyFile(privateKeyResource, null);
 		String tempPublicKeyExtension = publicKeyResource.substring(privateKeyResource.length());
 		// see net.schmizz.sshj.userauth.keyprovider.KeyProviderUtil.detectKeyFileFormat(File)
-		File tempTempPub = createTempKeyFile(publicKeyResource, new File(tempTempFile.getAbsolutePath() + tempPublicKeyExtension));
+		File tempTempPubFile = createTempKeyFile(publicKeyResource, new File(tempTempPrivateFile.getAbsolutePath() + tempPublicKeyExtension));
 		if (LOGGER.isDebugEnabled()) {
-			logDebug("tempTempPub=" + tempTempPub + " for " + publicKeyResource);
+			logDebug("tempTempPub=" + tempTempPubFile + " for " + publicKeyResource);
 		}
 		KeyProvider tempKey;
 		if (passPhrase == null) {
-			tempKey = aSsh.loadKeys(tempTempFile.getAbsolutePath());
+			tempKey = aSsh.loadKeys(tempTempPrivateFile.getAbsolutePath());
 		} else {
-			tempKey = aSsh.loadKeys(tempTempFile.getAbsolutePath(), passPhrase);
+			tempKey = aSsh.loadKeys(tempTempPrivateFile.getAbsolutePath(), passPhrase);
 		}
-		//	TODO	tempTempFile.delete();
-		//	TODO	tempTempPub.delete();
+		// private file needs to be available during logon.
+		//tempTempPrivateFile.delete();
+		tempTempPubFile.delete();
 		if (LOGGER.isDebugEnabled()) {
 			logDebug("Loaded " + tempKey + " for " + privateKeyResource);
 		}
@@ -196,5 +236,32 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	private void logError(String aString, Exception aE) {
 		LOGGER.error("DailyFileSftpAppender:" + aString, aE);
 	}
+
+	/**
+	 * TODO call on Shutdown.
+	 *
+	 * @throws IOException
+	 *
+	 */
+	public void shutdown() {
+		if (sftpClient != null) {
+			try {
+				sftpClient.close();
+			} catch (IOException e) {
+				logError("Ignore", e);
+			}
+		}
+		sftpClient = null;
+		if (ssh != null) {
+			try {
+				ssh.close();
+			} catch (IOException e) {
+				logError("Ignore", e);
+			}
+		}
+		ssh = null;
+	}
+
+	// TOOD ssh.disconnect()
 
 }
