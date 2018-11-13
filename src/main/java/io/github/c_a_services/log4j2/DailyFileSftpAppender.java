@@ -113,6 +113,9 @@ public class DailyFileSftpAppender extends AbstractAppender {
 			tempString = new StringBuilder(1024 * 16);
 			while (!pendingStrings.isEmpty()) {
 				tempString.append(pendingStrings.removeFirst());
+				if (tempString.length() > 1024 * 16) {
+					break;
+				}
 			}
 		}
 		synchronized (this) {
