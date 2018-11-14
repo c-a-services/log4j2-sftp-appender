@@ -9,14 +9,18 @@ import java.security.PublicKey;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.appender.rolling.DefaultRolloverStrategy;
 import org.apache.logging.log4j.core.appender.rolling.RolloverStrategy;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
@@ -27,6 +31,8 @@ import org.apache.logging.log4j.core.layout.PatternLayout;
 import net.schmizz.sshj.SSHClient;
 import net.schmizz.sshj.sftp.OpenMode;
 import net.schmizz.sshj.sftp.RemoteFile;
+import net.schmizz.sshj.sftp.RemoteResourceFilter;
+import net.schmizz.sshj.sftp.RemoteResourceInfo;
 import net.schmizz.sshj.sftp.SFTPClient;
 import net.schmizz.sshj.transport.verification.HostKeyVerifier;
 import net.schmizz.sshj.userauth.keyprovider.KeyProvider;
@@ -50,12 +56,16 @@ public class DailyFileSftpAppender extends AbstractAppender {
 
 	private transient SSHClient ssh;
 
+	private RolloverStrategy strategy;
+
 	/**
+	 * @param aStrategy
 	 * @param aPublicKeyResource TODO
 	 *
 	 */
-	protected DailyFileSftpAppender(String aName, Filter aFilter, Layout<? extends Serializable> aLayout, boolean ignoreExceptions, String aUserName,
-			String aPublicKeyResource, String aPrivateKeyResource, String aFilePattern, String aHostName, String aPathName, String aPassPhrase) {
+	protected DailyFileSftpAppender(String aName, Filter aFilter, Layout<? extends Serializable> aLayout, RolloverStrategy aStrategy, boolean ignoreExceptions,
+			String aUserName, String aPublicKeyResource, String aPrivateKeyResource, String aFilePattern, String aHostName, String aPathName,
+			String aPassPhrase) {
 		super(aName, aFilter, aLayout, ignoreExceptions);
 		userName = aUserName;
 		publicKeyResource = aPublicKeyResource;
@@ -64,6 +74,7 @@ public class DailyFileSftpAppender extends AbstractAppender {
 		hostName = aHostName;
 		pathName = aPathName;
 		passPhrase = aPassPhrase;
+		strategy = aStrategy;
 
 	}
 
@@ -91,11 +102,11 @@ public class DailyFileSftpAppender extends AbstractAppender {
 		} else {
 			tempLayout = aLayout;
 		}
-		return new DailyFileSftpAppender(name, filter, tempLayout, ignoreExceptions, aUserName, aPublicKeyResource, aPrivateKeyResource, aFilePattern,
+		return new DailyFileSftpAppender(name, filter, tempLayout, strategy, ignoreExceptions, aUserName, aPublicKeyResource, aPrivateKeyResource, aFilePattern,
 				aHostName, aPathName, aPassPhrase);
 	}
 
-	private Thread writerThread;
+	private transient Thread writerThread;
 
 	private LinkedList<String> pendingStrings = new LinkedList<>();
 
@@ -156,6 +167,88 @@ public class DailyFileSftpAppender extends AbstractAppender {
 	 */
 	@Override
 	public void append(LogEvent aEvent) {
+		initializeWriterThread();
+		Serializable tempString = getLayout().toSerializable(aEvent);
+		LocalDate tempLocalDateTime = Instant.ofEpochMilli(aEvent.getTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate();
+		String tempFileName = tempLocalDateTime + "-" + filePattern;
+		synchronized (pendingStrings) {
+			if (!tempFileName.equals(currentFileName)) {
+				logDebug("Rollover");
+				if (!pendingStrings.isEmpty()) {
+					pendingStrings.notifyAll();
+					try {
+						pendingStrings.wait(20000);
+					} catch (InterruptedException e) {
+						throw new RuntimeException("Error", e);
+					}
+				}
+				if (!pendingStrings.isEmpty()) {
+					logWarn("Some " + pendingStrings.size() + " log-entries could not be stored, will be stored in next days file.");
+				}
+				rollover();
+				currentFileName = tempFileName;
+			}
+			pendingStrings.add(tempString.toString());
+			pendingStrings.notifyAll();
+		}
+
+	}
+
+	/**
+	 *
+	 */
+	private void rollover() {
+		int tempMaxDays = 20;
+		if (strategy instanceof DefaultRolloverStrategy) {
+			int tempMaxIndex = ((DefaultRolloverStrategy) strategy).getMaxIndex();
+			if (tempMaxIndex > 0) {
+				tempMaxDays = tempMaxIndex;
+			}
+		}
+		if (sftpClient == null) {
+			logDebug("Skip rollover as no sftpClient");
+		} else {
+			Set<LocalDate> tempValidDates = new HashSet<>();
+			LocalDate tempLocalDate = LocalDate.now();
+			for (int i = 0; i < tempMaxDays; i++) {
+				tempValidDates.add(tempLocalDate);
+				tempLocalDate = tempLocalDate.minus(1, ChronoUnit.DAYS);
+			}
+
+			try {
+				List<RemoteResourceInfo> tempToBeDeleted = sftpClient.ls(pathName, new RemoteResourceFilter() {
+
+					@Override
+					public boolean accept(RemoteResourceInfo aResource) {
+						String tempName = aResource.getName();
+						if (tempName.length() >= 10) {
+							try {
+								LocalDate tempFileDate = LocalDate.parse(tempName.substring(0, 10));
+								if (!tempValidDates.contains(tempFileDate)) {
+									return true;
+								}
+							} catch (DateTimeParseException e) {
+								logError("Ignore, not a date file", e);
+							}
+						}
+						return false;
+					}
+				});
+				for (RemoteResourceInfo tempRemoteResource : tempToBeDeleted) {
+					String tempPath = tempRemoteResource.getPath();
+					logInfo("Delete " + tempPath);
+					sftpClient.rm(tempPath);
+				}
+			} catch (IOException e) {
+				logError("Ignore", e);
+			}
+		}
+	}
+
+	/**
+	 *
+	 */
+	private void initializeWriterThread() {
 		if (writerThread == null) {
 			writerThread = new Thread() {
 				@Override
@@ -178,25 +271,6 @@ public class DailyFileSftpAppender extends AbstractAppender {
 			writerThread.setDaemon(false);
 			writerThread.start();
 		}
-		Serializable tempString = getLayout().toSerializable(aEvent);
-		LocalDate tempLocalDateTime = Instant.ofEpochMilli(aEvent.getTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate();
-		String tempFileName = tempLocalDateTime + "-" + filePattern;
-		synchronized (pendingStrings) {
-			if (!tempFileName.equals(currentFileName)) {
-				if (!pendingStrings.isEmpty()) {
-					pendingStrings.notifyAll();
-					try {
-						pendingStrings.wait(20000);
-					} catch (InterruptedException e) {
-						throw new RuntimeException("Error", e);
-					}
-				}
-				currentFileName = tempFileName;
-			}
-			pendingStrings.add(tempString.toString());
-			pendingStrings.notifyAll();
-		}
-
 	}
 
 	/**
@@ -274,6 +348,10 @@ public class DailyFileSftpAppender extends AbstractAppender {
 
 	private void logInfo(String aString) {
 		LOGGER.info("DailyFileSftpAppender:" + aString);
+	}
+
+	private void logWarn(String aString) {
+		LOGGER.warn("DailyFileSftpAppender:" + aString);
 	}
 
 	/**
