@@ -41,6 +41,15 @@ Further details, see [log4j2-configuration](https://logging.apache.org/log4j/2.x
 
 Dependencies are marked `provided` and so either needs to be available in your server or added manually:
 
+##### this:
+
+		<dependency>
+			<groupId>io.github.c-a-services</groupId>
+			<artifactId>log4j2-sftp-appender</artifactId>
+			<version>2018.11.1</version>
+		</dependency>
+(for newest Version see [pom.xml](https://github.com/c-a-services/log4j2-sftp-appender/blob/master/pom.xml))
+
 ##### log4j2:
 
 ```xml
