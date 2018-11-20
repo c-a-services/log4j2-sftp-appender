@@ -3,7 +3,15 @@ Append the log-output from log4j2.xml to sftp server
 
 ### Configuration
 
-Add the appender to your `log4j2.xml`file:
+`log4j2.xml` file:
+
+Add the **import** to the root element:
+
+```xml
+<Configuration status="warn" packages="io.github.c_a_services.log4j2">
+```
+
+Add the **appender**:
 
 ```xml
 	<Appenders>
