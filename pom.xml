@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>io.github.c-a-services</groupId>
 	<artifactId>log4j2-sftp-appender</artifactId>
-	<version>2018.11.3-SNAPSHOT</version>
+	<version>2018.11.3</version>
 	<packaging>jar</packaging>
 	<name>log4j2-sftp-appender</name>
 	<description>SFTP appender for log4j2</description>
@@ -28,7 +28,7 @@
 		<url>https://github.com/c-a-services/log4j2-sftp-appender</url>
 		<connection>scm:git:https://github.com/c-a-services/log4j2-sftp-appender.git</connection>
 		<developerConnection>scm:git:ssh://git@github.com/c-a-services/log4j2-sftp-appender.git</developerConnection>
-		<tag>HEAD</tag>
+		<tag>log4j2-sftp-appender-2018.11.3</tag>
 	</scm>
 	<dependencies>
 
