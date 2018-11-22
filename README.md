@@ -56,7 +56,7 @@ Dependencies are marked `provided` and so either needs to be available in your s
 			<artifactId>log4j2-sftp-appender</artifactId>
 			<version>2018.11.1</version>
 		</dependency>
-(for newest Version see [pom.xml](https://github.com/c-a-services/log4j2-sftp-appender/blob/master/pom.xml))
+(for newest Version see [pom.xml](https://github.com/c-a-services/log4j2-sftp-appender/blob/master/pom.xml) or [maven central](https://search.maven.org/search?q=log4j2-sftp-appender))
 
 ##### log4j2:
 
