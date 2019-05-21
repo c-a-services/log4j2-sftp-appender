@@ -179,6 +179,8 @@ public class DailyFileSftpAppender extends AbstractAppender {
 					try {
 						pendingStrings.wait(20000);
 					} catch (InterruptedException e) {
+						// Restore interrupted state...
+						Thread.currentThread().interrupt();
 						throw new RuntimeException("Error", e);
 					}
 				}
@@ -264,6 +266,8 @@ public class DailyFileSftpAppender extends AbstractAppender {
 							flushPending();
 						}
 					} catch (InterruptedException e) {
+						// Restore interrupted state...
+						Thread.currentThread().interrupt();
 						flushPending();
 					}
 				}
